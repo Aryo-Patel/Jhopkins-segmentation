@@ -27,42 +27,47 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, epoch, save_object):
       predictions = model(data)
       loss = loss_fn(predictions, targets)
     
-    if constants.SAVE_STATS:
-      s3 = boto3.client("s3")
-
-      # saving the training loss
-      buffer = io.BytesIO()
-      save_object["running_training_loss"].append(loss.item())
-      pickle.dump(save_object["running_training_loss"], buffer.getvalue())
-
-      s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"runs/{save_object['save_path']}/loss.pickle", Body = buffer.getvalue())
-
-      if batch_idx == len(loop) - 1:
-        # save the batch, results, and predictions for last iteration on each epoch
-        buffer = io.BytesIO()
-        pickle.dump(targets, buffer)
-        s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"runs/{save_object['save_path']}/{epoch}/targets.pt", Body = buffer.getvalue())
-
-        buffer = io.BytesIO()
-        pickle.dump(data, buffer)
-        s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"runs/{save_object['save_path']}/{epoch}/data.pt", Body = buffer.getvalue())
-
-        buffer = io.BytesIO()
-        pickle.dump(data, buffer)
-        s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"runs/{save_object['save_path']}/{epoch}/predictions.pt", Body = buffer.getvalue())
-
     # backwards step
     optimizer.zero_grad()
     scaler.scale(loss).backward()
     scaler.step(optimizer)
     scaler.update()
 
+    
+    if constants.SAVE_STATS:
+      s3 = boto3.client("s3")
+
+      # saving the training loss
+      buffer = io.BytesIO()
+      save_object["running_training_loss"].append(loss.item())
+      pickle.dump(save_object["running_training_loss"], buffer)
+
+      s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"{save_object['save_path']}/loss.pickle", Body = buffer.getvalue())
+
+      if batch_idx == len(loop) - 1:
+        # save the batch, results, and predictions for last iteration on each epoch
+        buffer = io.BytesIO()
+        pickle.dump(targets, buffer)
+        s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"{save_object['save_path']}/{epoch}/targets.pt", Body = buffer.getvalue())
+
+        buffer = io.BytesIO()
+        pickle.dump(data, buffer)
+        s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"{save_object['save_path']}/{epoch}/data.pt", Body = buffer.getvalue())
+
+        buffer = io.BytesIO()
+        pickle.dump(predictions, buffer)
+        s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"{save_object['save_path']}/{epoch}/predictions.pt", Body = buffer.getvalue())
+
+        # save the model snapshot
+        buffer = io.BytesIO()
+        torch.save(model.state_dict(), buffer)
+        s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"{save_object['save_path']}/{epoch}/snapshot.pt", Body = buffer.getvalue())
 
     loop.set_postfix(loss = loss.item())
 
 def main():
   time = datetime.datetime.now().strftime("%m-%d_%H:%M:%S")
-  save_path = constants.RUNS_BASE_PATH + time + "/"
+  save_path = constants.RUNS_BASE_PATH + time
   save_object = {
     "save_path": save_path,
     "running_training_loss": [],
