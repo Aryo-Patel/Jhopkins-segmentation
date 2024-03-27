@@ -13,7 +13,10 @@ import constants
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+if constants.ON_ARM:
+  DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
+else:
+  DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 def train_fn(loader, model, optimizer, loss_fn, scaler, epoch, save_object):
   loop = tqdm(loader)
@@ -21,11 +24,17 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, epoch, save_object):
     data = data.to(device = DEVICE)
 
     targets = targets.float().unsqueeze(1).to(device = DEVICE)
+    targets_mask = (targets > 0).float()
 
     # calculate the loss
-    with torch.autocast(device_type=DEVICE):
+
+    if constants.ON_ARM:
       predictions = model(data)
-      loss = loss_fn(predictions, targets)
+      loss = loss_fn(predictions, targets_mask)
+    else:
+      with torch.autocast(device_type=DEVICE):
+        predictions = model(data)
+        loss = loss_fn(predictions, targets_mask)
     
     # backwards step
     optimizer.zero_grad()
@@ -44,18 +53,26 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, epoch, save_object):
 
       s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"{save_object['save_path']}/loss.pickle", Body = buffer.getvalue())
 
-      if batch_idx == len(loop) - 1:
+      if batch_idx == len(loop) - 2:
+        # check the training accuracy
+        sig_preds = torch.sigmoid(predictions)
+
+
         # save the batch, results, and predictions for last iteration on each epoch
+        targets_cpu = targets.cpu()
+        data_cpu = data.cpu()
+        predictions_cpu = predictions.cpu()
+
         buffer = io.BytesIO()
-        pickle.dump(targets, buffer)
+        pickle.dump(targets_cpu, buffer)
         s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"{save_object['save_path']}/{epoch}/targets.pt", Body = buffer.getvalue())
 
         buffer = io.BytesIO()
-        pickle.dump(data, buffer)
+        pickle.dump(data_cpu, buffer)
         s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"{save_object['save_path']}/{epoch}/data.pt", Body = buffer.getvalue())
 
         buffer = io.BytesIO()
-        pickle.dump(predictions, buffer)
+        pickle.dump(predictions_cpu, buffer)
         s3.put_object(Bucket = constants.BUCKET_NAME, Key = f"{save_object['save_path']}/{epoch}/predictions.pt", Body = buffer.getvalue())
 
         # save the model snapshot
@@ -95,7 +112,7 @@ def main():
 
 
   model = UNET(in_channels = 1, out_channels = 1, features=constants.FEATURES).to(DEVICE)
-  loss_fn = nn.BCEWithLogitsLoss()
+  loss_fn = nn.BCELoss()
   optimizer = optim.Adam(model.parameters(), lr = constants.LEARNING_RATE)
   scaler = torch.cuda.amp.GradScaler()
 

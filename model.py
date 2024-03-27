@@ -55,4 +55,4 @@ class UNET(nn.Module):
 
 
     # prepare for output
-    return self.final_conv(x)
+    return torch.sigmoid(self.final_conv(x))

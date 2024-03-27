@@ -5,6 +5,7 @@ import os
 import pickle
 from PIL import Image
 import numpy as np
+import wids
 
 # local imports
 import constants
@@ -17,7 +18,7 @@ class DataPairsDataset(Dataset):
 
     self.images = []
     s3 = boto3.resource("s3")
-    bucket = s3.Bucket("cindy-profiling")
+    bucket = s3.Bucket(constants.BUCKET_NAME)
     for obj in bucket.objects.filter(Prefix = f"Data/{self.train_test}/"):
         self.images.append(obj.key.split("/")[-1])
 
@@ -44,3 +45,11 @@ class DataPairsDataset(Dataset):
       brightfield_image = augmentations["image"]
       mask = augmentations["mask"]
     return brightfield_image, mask
+
+# TODO: Faster S3 --> Pytorch integration
+# bucket_path = "s3://cindy-profiling/Data/train/"
+trainset = wids.ShardListDataset(
+  "./_cache/train.tar",
+)
+
+trainset[0]

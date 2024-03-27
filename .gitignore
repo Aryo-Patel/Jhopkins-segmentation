@@ -1,3 +1,5 @@
 .ipynb_checkpoints
 __pycache__
 cindy.pem
+venv
+_cache

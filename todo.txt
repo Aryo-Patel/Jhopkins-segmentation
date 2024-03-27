@@ -1,0 +1,4 @@
+- Fix the model creating float tensors and MPS float types
+- Get S3 AWS dataloader integration
+- Do I need to change the loss function to punish incorrect weightings more?
+- What happens if I reduce the complexity of the network (down to 2 feature layers) but train for many more epochs?
