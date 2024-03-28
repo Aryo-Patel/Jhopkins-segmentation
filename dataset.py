@@ -5,7 +5,7 @@ import os
 import pickle
 from PIL import Image
 import numpy as np
-import wids
+import webdataset as wds
 
 # local imports
 import constants
@@ -48,8 +48,7 @@ class DataPairsDataset(Dataset):
 
 # TODO: Faster S3 --> Pytorch integration
 # bucket_path = "s3://cindy-profiling/Data/train/"
-trainset = wids.ShardListDataset(
-  "./_cache/train.tar",
-)
-
-trainset[0]
+trainset = wds.WebDataset("./_cache/train.tar").decode()
+for obj in trainset:
+  print(obj)
+  break
