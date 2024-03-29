@@ -40,6 +40,7 @@ class UNET(nn.Module):
 
     # Channel expansion
     for down in self.downs:
+      print("making it through a pass of model down")
       x = down(x)
       self.resid_connections.append(x)
       x = nn.MaxPool2d(kernel_size = 2, stride = 2)(x)

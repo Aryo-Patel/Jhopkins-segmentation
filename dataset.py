@@ -7,6 +7,9 @@ from PIL import Image
 import numpy as np
 import webdataset as wds
 
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+
 # local imports
 import constants
 import utils
@@ -48,7 +51,26 @@ class DataPairsDataset(Dataset):
 
 # TODO: Faster S3 --> Pytorch integration
 # bucket_path = "s3://cindy-profiling/Data/train/"
-trainset = wds.WebDataset("./_cache/train.tar").decode()
-for obj in trainset:
-  print(obj)
-  break
+def identity(x):
+    return x
+
+def apply_mask_transformation(x):
+    brightfield, mask = x[0], x[1]
+    aug = train_transform(image = np.array(brightfield), mask = mask)
+    return aug["image"][0], aug["mask"]
+shard_names = []
+
+train_transform = A.Compose(
+[
+    A.RandomCrop(height = constants.IMAGE_HEIGHT, width = constants.IMAGE_WIDTH, p = 1.0),
+    A.Rotate(limit = 35, p = 1.0),
+    A.HorizontalFlip(p = 0.5),
+    A.VerticalFlip(p = 0.1),
+    A.Normalize(mean = 0, std = 1, max_pixel_value = constants.MAX_PIXEL_VALUE),
+    ToTensorV2()
+]
+)
+
+for i in range(6):
+    shard_names.append(f"./shards/shard-00000{i}.tar")
+trainset = wds.WebDataset(shard_names, shardshuffle=True).shuffle(100).decode("pil").to_tuple("brightfield.pyd", "mask.pyd").map(apply_mask_transformation)

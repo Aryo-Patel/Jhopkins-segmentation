@@ -9,6 +9,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from dataset import DataPairsDataset
+from dataset import trainset
 import constants
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
@@ -23,7 +24,11 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, epoch, save_object):
   for batch_idx, (data, targets) in enumerate(loop):
     data = data.to(device = DEVICE)
 
+    data = data.unsqueeze(1)
+    print("data", data.shape)
+
     targets = targets.float().unsqueeze(1).to(device = DEVICE)
+    print("targets",targets.shape)
     targets_mask = (targets > 0).float()
 
     # calculate the loss
@@ -101,14 +106,17 @@ def main():
         ToTensorV2()
     ]
   )
-  train_dataset = DataPairsDataset("train", transform=train_transform)
-  train_loader = DataLoader(
-    train_dataset,
-    batch_size = constants.BATCH_SIZE,
-    num_workers = constants.NUM_WORKERS,
-    pin_memory = True,
-    shuffle = True
-    )
+
+  train_loader = DataLoader(trainset.batched(constants.BATCH_SIZE), num_workers = 4, batch_size = None)
+
+  # train_dataset = DataPairsDataset("train", transform=train_transform)
+  # train_loader = DataLoader(
+  #   train_dataset,
+  #   batch_size = constants.BATCH_SIZE,
+  #   num_workers = constants.NUM_WORKERS,
+  #   pin_memory = True,
+  #   shuffle = True
+  #   )
 
 
   model = UNET(in_channels = 1, out_channels = 1, features=constants.FEATURES).to(DEVICE)
@@ -121,4 +129,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+  main()
