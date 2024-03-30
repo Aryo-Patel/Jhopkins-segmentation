@@ -3,4 +3,5 @@ __pycache__
 cindy.pem
 venv
 _cache
-shards
+training_shards
+validation_shards
