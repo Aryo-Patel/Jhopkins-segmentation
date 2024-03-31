@@ -17,42 +17,51 @@ else:
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def train_fn(loader, model, optimizer, loss_fn, scaler, epoch, save_object):
-    loop = tqdm(loader)
+def train_fn(data, targets, model, optimizer, loss_fn, scaler, epoch, save_object):
+    # loop = tqdm(loader)
     predictions = None
-    targets = None
-    data = None
+    # targets = None
+    # data = None
     thresh = torch.nn.Threshold(0.5, 1)
-    for batch_idx, (data, targets) in enumerate(loop):
-        data = data.to(device=DEVICE)
+    # for batch_idx, (data, targets) in enumerate(loop):
+    data = data.to(device=DEVICE)
 
-        data = data.unsqueeze(1)
+    data = data.unsqueeze(1)
 
-        targets = targets.float().unsqueeze(1).to(device=DEVICE)
-        targets_mask = (targets > 0).float().to(device=DEVICE)
+    targets = targets.float().unsqueeze(1).to(device=DEVICE)
+    targets_mask = (targets > 0).float().to(device=DEVICE)
 
-        # calculate the loss
-        if constants.ON_ARM:
+    num_positives = targets_mask.sum()
+    num_total = targets_mask.numel()
+
+    # calculate the loss
+    if constants.ON_ARM:
+        predictions = model(data)
+
+        predictions_mask = thresh(predictions)
+        b = 1 - num_positives / num_total
+        a = 1 - b
+        a = 0.3
+        b = 0.7
+        loss = ftversky(predictions_mask, targets_mask, a, b)
+        # loss = weighted_bce(predictions, targets_mask, weights)
+        # loss = loss_fn(predictions, targets_mask)
+    else:
+        with torch.autocast(device_type=DEVICE):
             predictions = model(data)
+            loss = loss_fn(predictions, targets_mask)
 
-            predictions_mask = thresh(predictions)
-            loss = ftversky(predictions_mask, targets_mask)
-            # loss = weighted_bce(predictions, targets_mask, weights)
-        else:
-            with torch.autocast(device_type=DEVICE):
-                predictions = model(data)
-                loss = loss_fn(predictions, targets_mask)
+    # backwards step
+    optimizer.zero_grad()
+    scaler.scale(loss).backward()
+    scaler.step(optimizer)
+    scaler.update()
 
-        # backwards step
-        optimizer.zero_grad()
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+    if constants.SAVE_STATS:
+        save_object["running_training_loss"].append(loss.item())
 
-        if constants.SAVE_STATS:
-            save_object["running_training_loss"].append(loss.item())
-
-        loop.set_postfix(loss=loss.item())
+    print("loss: ", loss.item())
+    # loop.set_postfix(loss=loss.item())
     return {"data": data, "predictions": predictions, "targets": targets}
 
 
@@ -84,12 +93,22 @@ def main():
     model = UNET(in_channels=1, out_channels=1, features=constants.FEATURES).to(DEVICE)
     loss_fn = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=constants.LEARNING_RATE)
+
     scaler = torch.cuda.amp.GradScaler()
+
+    data, targets = next(iter(train_loader))
 
     for epoch in range(constants.NUM_EPOCHS):
         # print("running training batch")
         last_batch_dict = train_fn(
-            train_loader, model, optimizer, loss_fn, scaler, epoch, save_object
+            data,
+            targets,
+            model,
+            optimizer,
+            loss_fn,
+            scaler,
+            epoch,
+            save_object,
         )
         # print("finished training")
 
@@ -142,6 +161,7 @@ def main():
             # print("finished saving accuracy")
 
             print(f"Epoch {epoch} statistics: \n{stat_string}")
+    torch.save(last_batch_dict, "lbdc.pt")
 
 
 if __name__ == "__main__":

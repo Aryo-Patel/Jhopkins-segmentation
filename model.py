@@ -45,7 +45,14 @@ class UNET(nn.Module):
             )
             self.ups.append(DoubleConv(in_channels=feature * 2, out_channels=feature))
 
-        self.final_conv = DoubleConv(in_channels=features[0], out_channels=out_channels)
+        self.final_conv = nn.Sequential(
+            nn.Conv2d(features[0], out_channels, 3, padding=1, stride=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, 3, padding=1, stride=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
+        )
 
     def forward(self, x):
 

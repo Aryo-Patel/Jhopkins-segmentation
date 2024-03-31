@@ -69,16 +69,19 @@ def weighted_bce(predictions, target_mask, weights):
     return torch.neg(torch.mean(loss))
 
 
-def ftversky(predictions, target_mask):
-    a = 0.3
-    b = 0.7
-    gamma = 1 / 0.75
+def ftversky(predictions, target_mask, a, b):
+    gamma = 0.75
     epsilon = 1e-8
+    scaling_factor = 1
 
     num_same = (predictions * target_mask).sum() + epsilon
-    false_positives = ((1 - target_mask) * target_mask).sum()
+    false_positives = ((1 - target_mask) * predictions).sum()
     false_negatives = (target_mask * (1 - predictions)).sum()
-    tversky = num_same / (num_same + a * false_positives + b * false_negatives)
+    tversky = num_same / (
+        num_same
+        + a * false_positives * scaling_factor
+        + b * false_negatives / scaling_factor
+    )
 
     return (1 - tversky) ** (gamma)
 

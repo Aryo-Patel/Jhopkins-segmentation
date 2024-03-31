@@ -1,4 +1,5 @@
-- Fix the model creating float tensors and MPS float types
-- Get S3 AWS dataloader integration
-- Do I need to change the loss function to punish incorrect weightings more?
-- What happens if I reduce the complexity of the network (down to 2 feature layers) but train for many more epochs?
+- Get training loss to zero on one batch?
+
+Take-aways
+- funny that when you have a ReLU --> sigmoid --> threshold to map values < 0.5 to 1 AND you're working over sparse data, you force the model to learn how to activate weights to give a "zero" (or in this case, 0.5) output
+    - - How can I get outputs that have the perfect images from the training samples in commit a2053a3? (fixed above)
