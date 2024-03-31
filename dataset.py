@@ -1,5 +1,4 @@
 # global imports
-import os
 import pickle
 
 import albumentations as A

@@ -1,8 +1,5 @@
 import datetime
-import io
-import pickle
 
-import boto3
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,7 +9,7 @@ from tqdm import tqdm
 import constants
 from dataset import trainset, valset
 from model import UNET
-from utils import compute_dice_and_accuracy, save_results_to_s3
+from utils import compute_dice_and_accuracy, ftversky, save_results_to_s3, weighted_bce
 
 if constants.ON_ARM:
     DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
@@ -25,6 +22,7 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, epoch, save_object):
     predictions = None
     targets = None
     data = None
+    thresh = torch.nn.Threshold(0.5, 1)
     for batch_idx, (data, targets) in enumerate(loop):
         data = data.to(device=DEVICE)
 
@@ -36,7 +34,10 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, epoch, save_object):
         # calculate the loss
         if constants.ON_ARM:
             predictions = model(data)
-            loss = loss_fn(predictions, targets_mask)
+
+            predictions_mask = thresh(predictions)
+            loss = ftversky(predictions_mask, targets_mask)
+            # loss = weighted_bce(predictions, targets_mask, weights)
         else:
             with torch.autocast(device_type=DEVICE):
                 predictions = model(data)
@@ -49,11 +50,7 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, epoch, save_object):
         scaler.update()
 
         if constants.SAVE_STATS:
-            # saving the training loss
-            save_results_to_s3(
-                save_object["running_training_loss"],
-                f"{save_object['save_path']}/loss.pickle",
-            )
+            save_object["running_training_loss"].append(loss.item())
 
         loop.set_postfix(loss=loss.item())
     return {"data": data, "predictions": predictions, "targets": targets}
@@ -75,11 +72,13 @@ def main():
         trainset.batched(constants.BATCH_SIZE),
         num_workers=constants.NUM_WORKERS,
         batch_size=None,
+        pin_memory=True,
     )
     val_loader = DataLoader(
         valset.batched(constants.BATCH_SIZE),
         num_workers=constants.NUM_WORKERS,
         batch_size=None,
+        pin_memory=True,
     )
 
     model = UNET(in_channels=1, out_channels=1, features=constants.FEATURES).to(DEVICE)
@@ -88,40 +87,59 @@ def main():
     scaler = torch.cuda.amp.GradScaler()
 
     for epoch in range(constants.NUM_EPOCHS):
+        # print("running training batch")
         last_batch_dict = train_fn(
             train_loader, model, optimizer, loss_fn, scaler, epoch, save_object
         )
+        # print("finished training")
 
         # Save visual progress of files, save accuracy and training loss
         if constants.SAVE_STATS:
+            # print("saving loss")
+            # saving the training loss
+            save_results_to_s3(
+                save_object["running_training_loss"],
+                f"{save_object['save_path']}/loss.pickle",
+            )
+            # print("finished saving loss")
             stat_string = ""
             # save iamge generation
+            # print("saving batch info ")
             for name, value in last_batch_dict.items():
                 save_results_to_s3(value, f"{save_path}/{epoch}/{name}.pt")
 
+            # print("finished batch saving")
+
             # save model
+            # print("saving model")
+
             save_results_to_s3(model.state_dict(), f"{save_path}/{epoch}/model.pt")
 
+            # print("finished model saving")
+
+            # print("computing accuracy")
             train_stats = compute_dice_and_accuracy(
                 model, train_loader, constants.DEVICE
             )
             val_stats = compute_dice_and_accuracy(model, val_loader, constants.DEVICE)
-
+            # print("saving accuracy")
             for metric, value in train_stats.items():
                 save_object[f"running_training_{metric}"].append(value)
+                stat_string += f"Train {metric}: {value}\n"
                 save_results_to_s3(
                     save_object[f"running_training_{metric}"],
                     f"{save_path}/train_{metric}.pkl",
                 )
-                stat_string += f"Train {metric}: {value}\n"
-
+            # print("finished computing trainign accuracy")
             for metric, value in val_stats.items():
                 save_object[f"running_val_{metric}"].append(value)
+                stat_string += f"Test {metric}: {value}\n"
+
                 save_results_to_s3(
                     save_object[f"running_val_{metric}"],
                     f"{save_path}/val_{metric}.pkl",
                 )
-                stat_string += f"Test {metric}: {value}\n"
+            # print("finished saving accuracy")
 
             print(f"Epoch {epoch} statistics: \n{stat_string}")
 

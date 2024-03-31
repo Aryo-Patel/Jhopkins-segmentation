@@ -54,3 +54,34 @@ def compute_dice_and_accuracy(model, loader, device):
     dice_score = (2 * true_positives) / num_samples_seen
     accuracy = num_correct / (num_samples_seen // 2)
     return {"dice": dice_score.item(), "accuracy": accuracy.item()}
+
+
+def weighted_bce(predictions, target_mask, weights):
+    """
+    Weights should be ordered for the 0 valued samples and then for the 1-valued samples
+    """
+    # weight of 0's then weight of 1's
+    loss = weights[0] * (1 - target_mask) * torch.log(1 - predictions) + weights[
+        1
+    ] * target_mask * torch.log(
+        predictions
+    )  # this is the most disgusting auto-formatting in my life
+    return torch.neg(torch.mean(loss))
+
+
+def ftversky(predictions, target_mask):
+    a = 0.3
+    b = 0.7
+    gamma = 1 / 0.75
+    epsilon = 1e-8
+
+    num_same = (predictions * target_mask).sum() + epsilon
+    false_positives = ((1 - target_mask) * target_mask).sum()
+    false_negatives = (target_mask * (1 - predictions)).sum()
+    tversky = num_same / (num_same + a * false_positives + b * false_negatives)
+
+    return (1 - tversky) ** (gamma)
+
+
+if __name__ == "__main__":
+    save_results_to_s3("test", "test/test.pkl")
