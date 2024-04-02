@@ -41,8 +41,6 @@ def train_fn(data, targets, model, optimizer, loss_fn, scaler, epoch, save_objec
         predictions_mask = thresh(predictions)
         b = 1 - num_positives / num_total
         a = 1 - b
-        a = 0.3
-        b = 0.7
         loss = ftversky(predictions_mask, targets_mask, a, b)
         # loss = weighted_bce(predictions, targets_mask, weights)
         # loss = loss_fn(predictions, targets_mask)

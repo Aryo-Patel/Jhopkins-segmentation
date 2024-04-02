@@ -1,5 +1,8 @@
 - Get training loss to zero on one batch?
+    - Possibly scale back alpha and beta weighting?
+
+- what is good performance? Cindy can tell us this is useful, classify as how much of an RGC this is?
 
 Take-aways
 - funny that when you have a ReLU --> sigmoid --> threshold to map values < 0.5 to 1 AND you're working over sparse data, you force the model to learn how to activate weights to give a "zero" (or in this case, 0.5) output
-    - - How can I get outputs that have the perfect images from the training samples in commit a2053a3? (fixed above)
+    - How can I get outputs that have the perfect images from the training samples in commit a2053a3? (fixed above)
